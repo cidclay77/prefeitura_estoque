@@ -1,10 +1,16 @@
 <?php
+require_once 'includes/auth.php';
 require_once 'config/database.php';
 require_once 'models/Equipment.php';
+require_once 'models/User.php';
+
+// Verificar se é administrador
+requireRole('administrador');
 
 $database = new Database();
 $db = $database->getConnection();
 $equipment = new Equipment($db);
+$user = new User($db);
 
 $action = isset($_GET['action']) ? $_GET['action'] : 'general';
 $success_message = '';
@@ -20,11 +26,6 @@ if ($_POST) {
         // Adicionar nova categoria (simulado - em um sistema real seria armazenado no banco)
         if (isset($_POST['new_category']) && !empty($_POST['new_category'])) {
             $success_message = "Categoria '{$_POST['new_category']}' adicionada com sucesso!";
-        }
-    } elseif ($action == 'users') {
-        // Gerenciar usuários (simulado)
-        if (isset($_POST['user_action'])) {
-            $success_message = "Configuração de usuário atualizada com sucesso!";
         }
     } elseif ($action == 'system') {
         // Configurações do sistema
@@ -47,6 +48,11 @@ function getSystemStats($db) {
     $stmt->execute();
     $stats['total_movements'] = $stmt->fetchColumn();
     
+    $query = "SELECT COUNT(*) as total FROM users";
+    $stmt = $db->prepare($query);
+    $stmt->execute();
+    $stats['total_users'] = $stmt->fetchColumn();
+    
     // Tamanho do banco de dados
     $query = "SELECT 
                 ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS size_mb
@@ -64,6 +70,7 @@ function getSystemStats($db) {
 
 $system_stats = getSystemStats($db);
 $categories = $equipment->getCategories();
+$user_stats = $user->getUserStats();
 ?>
 
 <!DOCTYPE html>
@@ -81,6 +88,7 @@ $categories = $equipment->getCategories();
             margin-bottom: 24px;
             border-bottom: 1px solid var(--gray-200);
             padding-bottom: 16px;
+            flex-wrap: wrap;
         }
         
         .settings-nav-item {
@@ -93,6 +101,7 @@ $categories = $equipment->getCategories();
             font-weight: 500;
             transition: all 0.2s ease;
             cursor: pointer;
+            font-size: 14px;
         }
         
         .settings-nav-item:hover {
@@ -175,43 +184,6 @@ $categories = $equipment->getCategories();
             align-items: center;
         }
         
-        .user-list {
-            background: var(--white);
-            border-radius: var(--border-radius);
-            overflow: hidden;
-            box-shadow: var(--shadow-sm);
-        }
-        
-        .user-item {
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--gray-100);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .user-item:last-child {
-            border-bottom: none;
-        }
-        
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .user-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: var(--primary-color);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--white);
-            font-weight: 600;
-        }
-        
         .maintenance-actions {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -246,34 +218,7 @@ $categories = $equipment->getCategories();
     </style>
 </head>
 <body>
-    <div class="sidebar">
-        <div class="sidebar-header">
-            <i class="fas fa-city"></i>
-            <h3>Prefeitura</h3>
-        </div>
-        <nav class="sidebar-nav">
-            <a href="index.php" class="nav-item">
-                <i class="fas fa-tachometer-alt"></i>
-                Dashboard
-            </a>
-            <a href="equipments.php" class="nav-item">
-                <i class="fas fa-laptop"></i>
-                Equipamentos
-            </a>
-            <a href="movements.php" class="nav-item">
-                <i class="fas fa-exchange-alt"></i>
-                Movimentações
-            </a>
-            <a href="reports.php" class="nav-item">
-                <i class="fas fa-chart-line"></i>
-                Relatórios
-            </a>
-            <a href="settings.php" class="nav-item active">
-                <i class="fas fa-cog"></i>
-                Configurações
-            </a>
-        </nav>
-    </div>
+    <?php include 'includes/sidebar.php'; ?>
 
     <div class="main-content">
         <div class="header">
@@ -304,7 +249,7 @@ $categories = $equipment->getCategories();
                 <i class="fas fa-tags"></i>
                 Categorias
             </button>
-            <button class="settings-nav-item" onclick="showSection('users')">
+            <button class="settings-nav-item" onclick="showSection('users-overview')">
                 <i class="fas fa-users"></i>
                 Usuários
             </button>
@@ -335,13 +280,13 @@ $categories = $equipment->getCategories();
                     </div>
                     
                     <div class="system-info-card">
-                        <h4>Tamanho do Banco</h4>
-                        <div class="value"><?php echo $system_stats['db_size']; ?> MB</div>
+                        <h4>Total de Usuários</h4>
+                        <div class="value"><?php echo number_format($system_stats['total_users']); ?></div>
                     </div>
                     
                     <div class="system-info-card">
-                        <h4>Último Backup</h4>
-                        <div class="value" style="font-size: 16px;"><?php echo $system_stats['last_backup']; ?></div>
+                        <h4>Tamanho do Banco</h4>
+                        <div class="value"><?php echo $system_stats['db_size']; ?> MB</div>
                     </div>
                 </div>
 
@@ -429,7 +374,7 @@ $categories = $equipment->getCategories();
                     </div>
                 </form>
 
-                <div class="alert alert-error" style="margin-top: 20px;">
+                <div class="alert alert-warning" style="margin-top: 20px;">
                     <h4><i class="fas fa-exclamation-triangle"></i> Atenção</h4>
                     <p>Remover uma categoria pode afetar equipamentos existentes. Certifique-se de que não há equipamentos usando a categoria antes de removê-la.</p>
                 </div>
@@ -437,65 +382,44 @@ $categories = $equipment->getCategories();
         </div>
 
         <!-- Seção: Usuários -->
-        <div id="users" class="settings-section">
+        <div id="users-overview" class="settings-section">
             <div class="form-container">
-                <h3 style="margin-bottom: 20px;">Gerenciar Usuários</h3>
+                <h3 style="margin-bottom: 20px;">Visão Geral dos Usuários</h3>
                 
-                <div class="user-list">
-                    <div class="user-item">
-                        <div class="user-info">
-                            <div class="user-avatar">AD</div>
-                            <div>
-                                <strong>Administrador</strong>
-                                <br><small>admin@prefeitura.gov.br</small>
-                            </div>
-                        </div>
-                        <div>
-                            <span class="status-badge status-ativo">Ativo</span>
-                            <button class="btn btn-sm btn-primary" style="margin-left: 8px;">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                        </div>
+                <div class="system-info-grid">
+                    <div class="system-info-card">
+                        <h4>Total de Usuários</h4>
+                        <div class="value"><?php echo $user_stats['total_users']; ?></div>
                     </div>
                     
-                    <div class="user-item">
-                        <div class="user-info">
-                            <div class="user-avatar">JS</div>
-                            <div>
-                                <strong>João Silva</strong>
-                                <br><small>joao.silva@prefeitura.gov.br</small>
-                            </div>
-                        </div>
-                        <div>
-                            <span class="status-badge status-ativo">Ativo</span>
-                            <button class="btn btn-sm btn-primary" style="margin-left: 8px;">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                        </div>
+                    <div class="system-info-card">
+                        <h4>Usuários Ativos</h4>
+                        <div class="value"><?php echo $user_stats['active_users']; ?></div>
                     </div>
                     
-                    <div class="user-item">
-                        <div class="user-info">
-                            <div class="user-avatar">MS</div>
-                            <div>
-                                <strong>Maria Santos</strong>
-                                <br><small>maria.santos@prefeitura.gov.br</small>
-                            </div>
-                        </div>
-                        <div>
-                            <span class="status-badge status-inativo">Inativo</span>
-                            <button class="btn btn-sm btn-primary" style="margin-left: 8px;">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                        </div>
+                    <div class="system-info-card">
+                        <h4>Administradores</h4>
+                        <div class="value"><?php echo $user_stats['admins']; ?></div>
+                    </div>
+                    
+                    <div class="system-info-card">
+                        <h4>Operadores</h4>
+                        <div class="value"><?php echo $user_stats['operators']; ?></div>
                     </div>
                 </div>
 
                 <div style="margin-top: 20px;">
-                    <button class="btn btn-primary" onclick="addUser()">
-                        <i class="fas fa-user-plus"></i>
-                        Adicionar Usuário
+                    <button class="btn btn-primary" onclick="window.location.href='users.php'">
+                        <i class="fas fa-users-cog"></i>
+                        Gerenciar Usuários
                     </button>
+                </div>
+
+                <div class="alert alert-info" style="margin-top: 20px;">
+                    <h4><i class="fas fa-info-circle"></i> Níveis de Acesso</h4>
+                    <p><strong>Administrador:</strong> Acesso total ao sistema, incluindo gerenciamento de usuários e configurações</p>
+                    <p><strong>Operador:</strong> Pode gerenciar equipamentos e realizar movimentações</p>
+                    <p><strong>Visualizador:</strong> Apenas visualização de dados e relatórios</p>
                 </div>
             </div>
         </div>
@@ -518,7 +442,7 @@ $categories = $equipment->getCategories();
                     
                     <div class="system-info-card">
                         <h4>Frequência</h4>
-                        <div class="value" style="font-size: 16px;">Semanal</div>
+                        <div class="value" style="font-size: 16px;">Manual</div>
                     </div>
                     
                     <div class="system-info-card">
@@ -559,7 +483,7 @@ $categories = $equipment->getCategories();
                     </div>
                 </div>
 
-                <div class="alert alert-error" style="margin-top: 24px;">
+                <div class="alert alert-warning" style="margin-top: 24px;">
                     <h4><i class="fas fa-exclamation-triangle"></i> Importante</h4>
                     <p>Sempre faça backup antes de realizar atualizações importantes no sistema. Mantenha os backups em local seguro e teste a restauração periodicamente.</p>
                 </div>
@@ -718,10 +642,6 @@ $categories = $equipment->getCategories();
                 showNotification(`Categoria "${category}" removida com sucesso!`, 'success');
                 // Aqui seria implementada a remoção real
             }
-        }
-
-        function addUser() {
-            showNotification('Funcionalidade de adicionar usuário será implementada em versão futura.', 'info');
         }
 
         function clearCache() {

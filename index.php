@@ -1,7 +1,11 @@
 <?php
+require_once 'includes/auth.php';
 require_once 'config/database.php';
 require_once 'models/Equipment.php';
 require_once 'models/Movement.php';
+
+// Verificar se está logado
+requireLogin();
 
 $database = new Database();
 $db = $database->getConnection();
@@ -20,48 +24,23 @@ $recentMovements = $movement->getRecent(5);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Estoque - Prefeitura</title>
+    <title>Dashboard - Sistema de Estoque</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="assets/css/style.css" rel="stylesheet">
 </head>
 <body>
-    <div class="sidebar">
-        <div class="sidebar-header">
-            <i class="fas fa-city"></i>
-            <h3>Prefeitura</h3>
-        </div>
-        <nav class="sidebar-nav">
-            <a href="index.php" class="nav-item active">
-                <i class="fas fa-tachometer-alt"></i>
-                Dashboard
-            </a>
-            <a href="equipments.php" class="nav-item">
-                <i class="fas fa-laptop"></i>
-                Equipamentos
-            </a>
-            <a href="movements.php" class="nav-item">
-                <i class="fas fa-exchange-alt"></i>
-                Movimentações
-            </a>
-            <a href="reports.php" class="nav-item">
-                <i class="fas fa-chart-line"></i>
-                Relatórios
-            </a>
-            <a href="settings.php" class="nav-item">
-                <i class="fas fa-cog"></i>
-                Configurações
-            </a>
-        </nav>
-    </div>
+    <?php include 'includes/sidebar.php'; ?>
 
     <div class="main-content">
         <div class="header">
             <h1>Dashboard - Controle de Estoque</h1>
             <div class="header-actions">
+                <?php if (hasPermission('operador')): ?>
                 <button class="btn btn-primary" onclick="window.location.href='equipments.php?action=add'">
                     <i class="fas fa-plus"></i>
                     Novo Equipamento
                 </button>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -164,6 +143,13 @@ $recentMovements = $movement->getRecent(5);
                 </div>
             </div>
         </div>
+
+        <?php if (!hasPermission('operador')): ?>
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i>
+            <strong>Acesso Limitado:</strong> Você possui permissão apenas para visualização. Para realizar movimentações ou cadastrar equipamentos, entre em contato com o administrador.
+        </div>
+        <?php endif; ?>
     </div>
 
     <script src="assets/js/main.js"></script>
